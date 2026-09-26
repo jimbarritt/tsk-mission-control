@@ -42,3 +42,11 @@ first Claude Code session, named after the current git repository unless
 Not yet built past this skeleton. The task breakdown and status live in the
 `jimbarritt/tsk` repository's mission ledger, mission M-BOOT-06, since this
 repository carries no tsk knowledge of its own.
+
+## Development
+
+```bash
+PYTHONPATH=src python3 -m unittest discover -s tests
+```
+
+No test dependency beyond the standard library.
