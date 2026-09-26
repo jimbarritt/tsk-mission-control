@@ -1,6 +1,8 @@
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from tsk_mission_control import list_view, state
 
@@ -36,6 +38,53 @@ class DirectorySignatureTest(unittest.TestCase):
         first = list_view._directory_signature(self.directory)
         second = list_view._directory_signature(self.directory)
         self.assertEqual(first, second)
+
+
+class MoveCursorTest(unittest.TestCase):
+    def _states(self, *pane_ids):
+        return [state.new(name=p, pane_id=p, worktree="/x") for p in pane_ids]
+
+    def test_no_states_gives_no_cursor(self):
+        self.assertIsNone(list_view._move_cursor([], "%1", 1))
+
+    def test_moves_down_and_clamps_at_the_end(self):
+        states = self._states("%1", "%2", "%3")
+        self.assertEqual(list_view._move_cursor(states, "%1", 1), "%2")
+        self.assertEqual(list_view._move_cursor(states, "%3", 1), "%3")
+
+    def test_moves_up_and_clamps_at_the_start(self):
+        states = self._states("%1", "%2", "%3")
+        self.assertEqual(list_view._move_cursor(states, "%3", -1), "%2")
+        self.assertEqual(list_view._move_cursor(states, "%1", -1), "%1")
+
+    def test_unknown_cursor_moves_from_the_first_entry(self):
+        states = self._states("%1", "%2")
+        self.assertEqual(list_view._move_cursor(states, "%stale", 1), "%2")
+
+
+class SpawnNewSessionPaneTest(unittest.TestCase):
+    def _run_side_effect(self, list_windows_output):
+        def run(cmd, **kwargs):
+            if cmd[:2] == ["tmux", "list-windows"]:
+                return subprocess.CompletedProcess(cmd, 0, stdout=list_windows_output)
+            return subprocess.CompletedProcess(cmd, 0, stdout="%9\n")
+        return run
+
+    def test_creates_the_stash_window_when_absent(self):
+        with mock.patch.object(subprocess, "run", side_effect=self._run_side_effect("")) as run:
+            pane_id = list_view._spawn_new_session_pane("$0", "tsk", "/home/user/tsk")
+            self.assertEqual(pane_id, "%9")
+            new_window_calls = [c for c in run.call_args_list if "new-window" in c.args[0]]
+            self.assertEqual(len(new_window_calls), 1)
+
+    def test_splits_the_existing_stash_window(self):
+        with mock.patch.object(
+            subprocess, "run", side_effect=self._run_side_effect("mc-stash\n")
+        ) as run:
+            pane_id = list_view._spawn_new_session_pane("$0", "tsk", "/home/user/tsk")
+            self.assertEqual(pane_id, "%9")
+            split_calls = [c for c in run.call_args_list if "split-window" in c.args[0]]
+            self.assertEqual(len(split_calls), 1)
 
 
 if __name__ == "__main__":
