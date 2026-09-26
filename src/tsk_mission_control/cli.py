@@ -2,6 +2,7 @@ import argparse
 import sys
 
 from . import __version__
+from . import layout
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -12,10 +13,9 @@ def main(argv: list[str] | None = None) -> int:
         nargs="?",
         help="name for the first Claude session (default: the current git repo name)",
     )
-    parser.parse_args(argv)
+    args = parser.parse_args(argv)
 
-    print("tsk-mission-control: layout command not built yet (see T-03)", file=sys.stderr)
-    return 1
+    return layout.run(args.name)
 
 
 if __name__ == "__main__":
