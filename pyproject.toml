@@ -1,0 +1,16 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "tsk-mission-control"
+version = "0.1.0"
+description = "A tmux control panel for Claude Code sessions"
+requires-python = ">=3.9"
+dependencies = []
+
+[project.scripts]
+tsk-mission-control = "tsk_mission_control.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/tsk_mission_control"]
