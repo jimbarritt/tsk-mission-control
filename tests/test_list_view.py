@@ -99,5 +99,36 @@ class SpawnNewSessionPaneTest(unittest.TestCase):
             self.assertEqual(len(split_calls), 1)
 
 
+class OpenNvimForSessionTest(unittest.TestCase):
+    def _run_side_effect(self, list_windows_output):
+        def run(cmd, **kwargs):
+            if cmd[:2] == ["tmux", "list-windows"]:
+                return subprocess.CompletedProcess(cmd, 0, stdout=list_windows_output)
+            return subprocess.CompletedProcess(cmd, 0, stdout="")
+        return run
+
+    def test_creates_the_window_when_absent_then_selects_it(self):
+        session = state.new(name="tsk", pane_id="%3", worktree="/home/user/tsk")
+        with mock.patch.object(subprocess, "run", side_effect=self._run_side_effect("")) as run:
+            list_view._open_nvim_for_session("$0", session)
+            new_window_calls = [c for c in run.call_args_list if "new-window" in c.args[0]]
+            select_calls = [c for c in run.call_args_list if "select-window" in c.args[0]]
+            self.assertEqual(len(new_window_calls), 1)
+            self.assertIn("/home/user/tsk", new_window_calls[0].args[0])
+            self.assertEqual(len(select_calls), 1)
+            self.assertIn("$0:nvim-3", select_calls[0].args[0])
+
+    def test_reuses_the_window_when_already_open(self):
+        session = state.new(name="tsk", pane_id="%3", worktree="/home/user/tsk")
+        with mock.patch.object(
+            subprocess, "run", side_effect=self._run_side_effect("nvim-3\n")
+        ) as run:
+            list_view._open_nvim_for_session("$0", session)
+            new_window_calls = [c for c in run.call_args_list if "new-window" in c.args[0]]
+            select_calls = [c for c in run.call_args_list if "select-window" in c.args[0]]
+            self.assertEqual(len(new_window_calls), 0)
+            self.assertEqual(len(select_calls), 1)
+
+
 if __name__ == "__main__":
     unittest.main()

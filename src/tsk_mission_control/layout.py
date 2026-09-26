@@ -24,6 +24,7 @@ from . import hooks, state
 
 TERMINAL_HEIGHT_PERCENT = 20
 LIST_WIDTH_PERCENT = 25
+MAIN_WINDOW_NAME = "mission-control"
 
 
 def _tmux(*args: str) -> None:
@@ -61,6 +62,15 @@ def run(name: str | None) -> int:
         "split-window", "-h", "-b", "-t", pane_id, "-l", f"{LIST_WIDTH_PERCENT}%",
         sys.executable, "-m", "tsk_mission_control.list_view",
     )
+
+    # Named so T-08's prefix+v binding can return to it by name rather than
+    # a hardcoded window ID: an unqualified window-name target resolves
+    # within whichever session the client is currently attached to, so one
+    # binding, registered once here per tmux session, works for that
+    # session's own main window even if other Mission Control sessions
+    # exist elsewhere on the same tmux server.
+    _tmux("rename-window", "-t", pane_id, MAIN_WINDOW_NAME)
+    _tmux("bind-key", "v", "select-window", "-t", MAIN_WINDOW_NAME)
 
     state_path = state.state_file_path(pane_id)
     state.save(state.new(name=session_name, pane_id=pane_id, worktree=str(cwd)), state_path)

@@ -1,14 +1,20 @@
-"""The Mission Control list view (T-04, T-05).
+"""The Mission Control list view (T-04, T-05, T-07, T-08).
 
-Shows every Claude session in this tmux session by name, and drives
-selection and new-session creation. Polls the state directory rather than
-watching it: a poll works the same on macOS and Linux, where an
-inotify-based watch would not.
+Shows every Claude session in this tmux session by name, with its token
+total, and drives selection, new-session creation, and nvim per session.
+Polls the state directory rather than watching it: a poll works the same
+on macOS and Linux, where an inotify-based watch would not.
 
 Switching a session into view uses `swap-pane`: the session currently
 shown and the one being selected trade places, so the one leaving view
 keeps running rather than being killed. A session not currently shown
 lives in a hidden window, `mc-stash`, created on first use.
+
+`e` opens the selected session's nvim in a dedicated window, named after
+its pane ID so a second `e` press finds the same window rather than
+starting another nvim. `prefix+v` (bound in layout.py, since it is a
+tmux-server-wide binding, not something this pane's own key handling can
+own) returns to the three-pane layout, leaving nvim running.
 """
 
 from __future__ import annotations
@@ -55,15 +61,15 @@ def _visible_session_pane_id(window_id: str, list_pane_id: str) -> str | None:
     return None
 
 
-def _stash_window_exists(session_id: str) -> bool:
+def _window_exists(session_id: str, window_name: str) -> bool:
     out = _tmux_capture(["list-windows", "-t", session_id, "-F", "#{window_name}"])
-    return MC_STASH_WINDOW in out.splitlines()
+    return window_name in out.splitlines()
 
 
 def _spawn_new_session_pane(session_id: str, name: str, worktree: str) -> str:
     env_args = ["-e", f"MC_SESSION_NAME={name}", "-e", f"MC_WORKTREE={worktree}"]
     entrypoint = [sys.executable, "-m", "tsk_mission_control.entrypoint"]
-    if _stash_window_exists(session_id):
+    if _window_exists(session_id, MC_STASH_WINDOW):
         target = f"{session_id}:{MC_STASH_WINDOW}"
         cmd = ["split-window", "-t", target, "-c", worktree, *env_args, "-P", "-F", "#{pane_id}", "--", *entrypoint]
     else:
@@ -78,6 +84,27 @@ def _swap_into_view(pane_id: str, window_id: str, list_pane_id: str) -> None:
     visible = _visible_session_pane_id(window_id, list_pane_id)
     if visible is not None and visible != pane_id:
         subprocess.run(["tmux", "swap-pane", "-d", "-s", pane_id, "-t", visible], check=True)
+
+
+def _nvim_window_name(pane_id: str) -> str:
+    return f"nvim-{pane_id.lstrip('%')}"
+
+
+def _open_nvim_for_session(session_id: str, session: state.SessionState) -> None:
+    """Opens the selected session's nvim, reusing its window if one from an
+    earlier `e` press is still there: naming the window after the pane ID
+    is what makes "opening it again shows the same nvim" true, with no
+    extra state to track."""
+    window_name = _nvim_window_name(session.pane_id)
+    if not _window_exists(session_id, window_name):
+        subprocess.run(
+            [
+                "tmux", "new-window", "-d", "-t", session_id, "-n", window_name,
+                "-c", session.worktree, "--", "nvim",
+            ],
+            check=True,
+        )
+    subprocess.run(["tmux", "select-window", "-t", f"{session_id}:{window_name}"], check=True)
 
 
 def _move_cursor(states: list[state.SessionState], cursor_pane_id: str | None, direction: int) -> str | None:
@@ -228,6 +255,10 @@ def _loop(stdscr, session_id: str) -> None:
             if cursor_pane_id is not None:
                 _swap_into_view(cursor_pane_id, window_id, list_pane_id)
             last_signature = None
+        elif ch == ord("e"):
+            session = next((s for s in states if s.pane_id == cursor_pane_id), None)
+            if session is not None:
+                _open_nvim_for_session(session_id, session)
 
         time.sleep(POLL_INTERVAL_SECONDS)
 
