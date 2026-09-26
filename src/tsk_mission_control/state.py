@@ -166,9 +166,18 @@ def list_states(tmux_session_id: str | None = None) -> list[SessionState]:
     if not directory.is_dir():
         return []
     states = []
-    for entry in sorted(directory.glob("*.json")):
+    for entry in sorted(directory.glob("*.json"), key=_pane_sort_key):
         try:
             states.append(load(entry))
         except (json.JSONDecodeError, KeyError, OSError):
             continue
     return states
+
+
+def _pane_sort_key(path: Path) -> int:
+    """Sort by the pane ID's numeric value, not lexicographically: '%2' must
+    come before '%10', which string sorting would get backwards."""
+    try:
+        return int(path.stem.lstrip("%"))
+    except ValueError:
+        return -1

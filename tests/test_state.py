@@ -54,6 +54,16 @@ class StateStoreTest(unittest.TestCase):
         with mock.patch.dict("os.environ", env):
             self.assertEqual(state.list_states(), [])
 
+    def test_list_states_sorts_pane_ids_numerically(self):
+        env = {"XDG_STATE_HOME": self.tmp.name, "TSK_MC_TMUX_SESSION_ID": "$9"}
+        with mock.patch.dict("os.environ", env):
+            for pane_id in ("%10", "%2", "%1"):
+                path = state.state_file_path(pane_id)
+                state.save(state.new(name=pane_id, pane_id=pane_id, worktree="/x"), path)
+
+            ordered = [s.pane_id for s in state.list_states()]
+            self.assertEqual(ordered, ["%1", "%2", "%10"])
+
 
 if __name__ == "__main__":
     unittest.main()
