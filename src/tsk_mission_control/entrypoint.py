@@ -11,7 +11,7 @@ from __future__ import annotations
 import os
 import sys
 
-from . import state
+from . import hooks, state
 
 
 def main() -> int:
@@ -24,7 +24,7 @@ def main() -> int:
     os.environ["MC_STATE_FILE"] = str(path)
 
     try:
-        os.execvp("claude", ["claude"])
+        os.execvp("claude", ["claude", "--settings", hooks.settings_json()])
     except FileNotFoundError:
         print("tsk-mission-control: claude not found on PATH", file=sys.stderr)
         return 1

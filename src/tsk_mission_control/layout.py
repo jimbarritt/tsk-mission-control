@@ -20,7 +20,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from . import state
+from . import hooks, state
 
 TERMINAL_HEIGHT_PERCENT = 20
 LIST_WIDTH_PERCENT = 25
@@ -67,7 +67,7 @@ def run(name: str | None) -> int:
     os.environ["MC_STATE_FILE"] = str(state_path)
 
     try:
-        os.execvp("claude", ["claude"])
+        os.execvp("claude", ["claude", "--settings", hooks.settings_json()])
     except FileNotFoundError:
         print("tsk-mission-control: claude not found on PATH", file=sys.stderr)
         return 1
