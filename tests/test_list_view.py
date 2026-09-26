@@ -62,6 +62,18 @@ class MoveCursorTest(unittest.TestCase):
         self.assertEqual(list_view._move_cursor(states, "%stale", 1), "%2")
 
 
+class FormatTokensTest(unittest.TestCase):
+    def test_small_counts_are_shown_exactly(self):
+        self.assertEqual(list_view._format_tokens(0), "0")
+        self.assertEqual(list_view._format_tokens(999), "999")
+
+    def test_thousands_use_one_decimal_k(self):
+        self.assertEqual(list_view._format_tokens(1_500), "1.5k")
+
+    def test_millions_use_one_decimal_m(self):
+        self.assertEqual(list_view._format_tokens(35_158_238), "35.2M")
+
+
 class SpawnNewSessionPaneTest(unittest.TestCase):
     def _run_side_effect(self, list_windows_output):
         def run(cmd, **kwargs):

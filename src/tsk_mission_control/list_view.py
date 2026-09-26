@@ -20,7 +20,7 @@ import sys
 import time
 from pathlib import Path
 
-from . import layout, state
+from . import layout, state, tokens
 
 POLL_INTERVAL_SECONDS = 0.5
 MC_STASH_WINDOW = "mc-stash"
@@ -143,7 +143,20 @@ def _prompt_for_name(stdscr, default: str) -> str:
     return text or default
 
 
-def _draw(stdscr, states: list[state.SessionState], cursor_pane_id: str | None) -> None:
+def _format_tokens(count: int) -> str:
+    if count < 1_000:
+        return str(count)
+    if count < 1_000_000:
+        return f"{count / 1_000:.1f}k"
+    return f"{count / 1_000_000:.1f}M"
+
+
+def _draw(
+    stdscr,
+    states: list[state.SessionState],
+    cursor_pane_id: str | None,
+    token_totals: dict[str, int],
+) -> None:
     stdscr.erase()
     height, width = stdscr.getmaxyx()
     stdscr.addstr(0, 0, "Mission Control"[: width - 1])
@@ -153,7 +166,8 @@ def _draw(stdscr, states: list[state.SessionState], cursor_pane_id: str | None) 
         if row >= height - 1:
             break
         mark = "●" if session.status.attention else "○"
-        line = f"{mark} {session.name}"[: width - 1]
+        tokens_str = _format_tokens(token_totals.get(session.pane_id, 0))
+        line = f"{mark} {session.name}  {tokens_str}"[: width - 1]
         attr = curses.A_REVERSE if session.pane_id == cursor_pane_id else curses.A_NORMAL
         stdscr.addstr(row, 0, line, attr)
     stdscr.refresh()
@@ -169,25 +183,39 @@ def _loop(stdscr, session_id: str) -> None:
     last_signature = None
     states: list[state.SessionState] = []
     cursor_pane_id: str | None = None
+    token_counters: dict[str, tokens.TranscriptTokenCounter] = {}
+    last_token_totals: dict[str, int] = {}
 
     while True:
         signature = _directory_signature(directory)
-        if signature != last_signature:
+        states_changed = signature != last_signature
+        if states_changed:
             states = state.list_states(session_id)
             if states and cursor_pane_id not in {s.pane_id for s in states}:
                 cursor_pane_id = states[0].pane_id
-            _draw(stdscr, states, cursor_pane_id)
             last_signature = signature
+
+        current_token_totals: dict[str, int] = {}
+        for session in states:
+            if not session.transcript_path:
+                continue
+            counter = token_counters.setdefault(session.pane_id, tokens.TranscriptTokenCounter())
+            current_token_totals[session.pane_id] = counter.total(session.transcript_path)
+        tokens_changed = current_token_totals != last_token_totals
+        last_token_totals = current_token_totals
+
+        if states_changed or tokens_changed:
+            _draw(stdscr, states, cursor_pane_id, current_token_totals)
 
         ch = stdscr.getch()
         if ch == ord("q"):
             return
         elif ch in (ord("j"), curses.KEY_DOWN):
             cursor_pane_id = _move_cursor(states, cursor_pane_id, 1)
-            _draw(stdscr, states, cursor_pane_id)
+            _draw(stdscr, states, cursor_pane_id, current_token_totals)
         elif ch in (ord("k"), curses.KEY_UP):
             cursor_pane_id = _move_cursor(states, cursor_pane_id, -1)
-            _draw(stdscr, states, cursor_pane_id)
+            _draw(stdscr, states, cursor_pane_id, current_token_totals)
         elif ch == ord("n"):
             default_name = layout.default_session_name(Path.cwd())
             name = _prompt_for_name(stdscr, default_name)
